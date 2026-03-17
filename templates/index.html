@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CloudRAMSaaS — Cloud Desktop</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body class="auth-page">
+
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="10" fill="url(#grad)"/>
+            <path d="M10 22C10 17.58 13.58 14 18 14h1.5a6.5 6.5 0 016.5 6.5v.5H28a4 4 0 010 8H12a4 4 0 01-2-7.46" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+            <defs>
+              <linearGradient id="grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#6366f1"/>
+                <stop offset="1" stop-color="#8b5cf6"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h1>CloudRAMSaaS</h1>
+        <p>Your persistent cloud desktop, on demand</p>
+      </div>
+
+      <div class="tab-group">
+        <button class="tab active" id="tab-login" onclick="switchTab('login')">Sign In</button>
+        <button class="tab" id="tab-register" onclick="switchTab('register')">Register</button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="form-login" class="auth-form" onsubmit="handleLogin(event)">
+        <div class="field">
+          <label for="login-email">Email</label>
+          <input id="login-email" type="email" placeholder="you@example.com" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <div id="login-error" class="error-msg hidden"></div>
+        <button type="submit" class="btn-primary" id="login-btn">
+          <span class="btn-text">Sign In</span>
+          <span class="spinner hidden"></span>
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="form-register" class="auth-form hidden" onsubmit="handleRegister(event)">
+        <div class="field">
+          <label for="reg-email">Email</label>
+          <input id="reg-email" type="email" placeholder="you@example.com" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <label for="reg-password">Password</label>
+          <input id="reg-password" type="password" placeholder="Min 8 characters" required minlength="8" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label for="reg-confirm">Confirm Password</label>
+          <input id="reg-confirm" type="password" placeholder="••••••••" required autocomplete="new-password" />
+        </div>
+        <div id="register-error" class="error-msg hidden"></div>
+        <div id="register-success" class="success-msg hidden"></div>
+        <button type="submit" class="btn-primary" id="register-btn">
+          <span class="btn-text">Create Account</span>
+          <span class="spinner hidden"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    const SUPABASE_URL = "{{ supabase_url }}";
+    const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
+    const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Redirect if already logged in
+    sbClient.auth.getSession().then(({ data: { session } }) => {
+      if (session) window.location.href = "/dashboard";
+    });
+
+    function switchTab(tab) {
+      const isLogin = tab === "login";
+      document.getElementById("form-login").classList.toggle("hidden", !isLogin);
+      document.getElementById("form-register").classList.toggle("hidden", isLogin);
+      document.getElementById("tab-login").classList.toggle("active", isLogin);
+      document.getElementById("tab-register").classList.toggle("active", !isLogin);
+    }
+
+    function setLoading(btnId, loading) {
+      const btn = document.getElementById(btnId);
+      btn.querySelector(".btn-text").classList.toggle("hidden", loading);
+      btn.querySelector(".spinner").classList.toggle("hidden", !loading);
+      btn.disabled = loading;
+    }
+
+    function showError(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.classList.remove("hidden");
+    }
+
+    function hideError(id) {
+      document.getElementById(id).classList.add("hidden");
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      hideError("login-error");
+      setLoading("login-btn", true);
+      const email = document.getElementById("login-email").value.trim();
+      const password = document.getElementById("login-password").value;
+
+      const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
+      setLoading("login-btn", false);
+
+      if (error) {
+        showError("login-error", error.message);
+        return;
+      }
+      window.location.href = "/dashboard";
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      hideError("register-error");
+      const email = document.getElementById("reg-email").value.trim();
+      const password = document.getElementById("reg-password").value;
+      const confirm = document.getElementById("reg-confirm").value;
+
+      if (password !== confirm) {
+        showError("register-error", "Passwords do not match.");
+        return;
+      }
+
+      setLoading("register-btn", true);
+      const { data, error } = await sbClient.auth.signUp({ email, password });
+      setLoading("register-btn", false);
+
+      if (error) {
+        showError("register-error", error.message);
+        return;
+      }
+
+      document.getElementById("register-error").classList.add("hidden");
+      const successEl = document.getElementById("register-success");
+      successEl.textContent = "Account created! Check your email to confirm, then sign in.";
+      successEl.classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>
