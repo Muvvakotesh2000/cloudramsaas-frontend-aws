@@ -11,6 +11,8 @@ var _projectsLoaded    = false;
 var _sessionStopFired  = false;
 var _provisionTimer    = null;
 var _provisionStart    = null;
+var _projectPollTimer  = null;
+var _projectPollCount  = 0;
 var PROVISION_DURATION  = 90;
 
 function initDashboard(supabaseUrl, supabaseAnonKey, backendApiUrl) {
@@ -278,6 +280,23 @@ function _notifyReady() {
     Notification.requestPermission();
   }
   try { document.title = "✓ CloudRAMSaaS — Ready"; setTimeout(function() { document.title = "CloudRAMSaaS"; }, 5000); } catch(_) {}
+
+  _startProjectPolling();
+}
+
+function _startProjectPolling() {
+  _stopProjectPolling();
+  _projectPollCount = 0;
+  _projectPollTimer = setInterval(function() {
+    _projectPollCount++;
+    _projectsLoaded = false;
+    refreshCloudProjects();
+    if (_projectPollCount >= 6) _stopProjectPolling();
+  }, 10000);
+}
+
+function _stopProjectPolling() {
+  if (_projectPollTimer) { clearInterval(_projectPollTimer); _projectPollTimer = null; }
 }
 
 async function stopSession() {
@@ -377,6 +396,7 @@ function renderNoSession() {
   _el("btn-allocate").style.display = "";
   setSessionState("idle");
   _stopProvisionTimer(false);
+  _stopProjectPolling();
   _showWorkspacePanels(false);
   _updateTransferButtons(false);
 }
