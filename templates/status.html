@@ -63,105 +63,115 @@
           <button class="btn btn-ghost-danger" id="btn-stop" onclick="stopSession()" style="display:none">Stop codespace</button>
         </div>
       </div>
+      <!-- Getting started hint (shown when no session) -->
+      <div class="session-hint" id="session-hint">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>Click <strong>"New codespace"</strong> to launch your cloud desktop. Once it's running, you can upload projects, open your IDE in the browser, and download your work.</span>
+      </div>
     </section>
 
-    <!-- ── Transfer ── -->
-    <section class="card">
-      <div class="card-header">
-        <h3>Transfer files</h3>
-      </div>
-      <div class="card-body">
-        <div class="dropzone" id="drop-zone">
-          <input type="file" id="file-picker" multiple tabindex="-1" />
-          <input type="file" id="folder-picker" webkitdirectory tabindex="-1" />
-          <div class="dropzone-inner" id="drop-default">
-            <div class="dropzone-icon">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
+    <!-- ── Workspace panels (hidden until session is RUNNING) ── -->
+    <div id="workspace-panels" style="display:none" class="workspace-panels">
+
+      <!-- ── Transfer ── -->
+      <section class="card">
+        <div class="card-header">
+          <h3>Transfer files</h3>
+        </div>
+        <div class="card-body">
+          <div class="dropzone" id="drop-zone">
+            <input type="file" id="file-picker" multiple tabindex="-1" />
+            <input type="file" id="folder-picker" webkitdirectory tabindex="-1" />
+            <div class="dropzone-inner" id="drop-default">
+              <div class="dropzone-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              </div>
+              <p class="dropzone-title">Drag and drop your files here</p>
+              <p class="dropzone-sub">or choose from your computer</p>
+              <div class="dropzone-btns">
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('file-picker').click()">Select files</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('folder-picker').click()">Select folder</button>
+              </div>
             </div>
-            <p class="dropzone-title">Drag and drop your files here</p>
-            <p class="dropzone-sub">or choose from your computer</p>
-            <div class="dropzone-btns">
-              <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('file-picker').click()">Select files</button>
-              <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('folder-picker').click()">Select folder</button>
+            <div class="dropzone-selected" id="drop-selected" style="display:none">
+              <div class="dropzone-file-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+              </div>
+              <span class="dropzone-file-text" id="selected-files-text"></span>
+              <button type="button" class="link-btn" onclick="clearSelectedFiles()">Remove</button>
             </div>
           </div>
-          <div class="dropzone-selected" id="drop-selected" style="display:none">
-            <div class="dropzone-file-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-            </div>
-            <span class="dropzone-file-text" id="selected-files-text"></span>
-            <button type="button" class="link-btn" onclick="clearSelectedFiles()">Remove</button>
+          <div class="upload-row">
+            <input type="text" id="project-name" placeholder="Project name" class="input" />
+            <select id="ide-select" class="input ide-select">
+              <option value="vscode">VS Code</option>
+              <option value="sublime">Sublime Text</option>
+              <option value="eclipse">Eclipse</option>
+              <option value="intellij">IntelliJ IDEA</option>
+              <option value="pycharm">PyCharm</option>
+            </select>
+            <button class="btn btn-primary" id="btn-upload" onclick="uploadProjectToCloud()" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M3 17v2a2 2 0 002 2h14a2 2 0 002-2v-2"/></svg>
+              Upload
+            </button>
+          </div>
+          <div class="progress-area" id="upload-progress" style="display:none">
+            <div class="progress-track"><div class="progress-fill" id="upload-progress-fill"></div></div>
+            <span class="progress-label" id="upload-status"></span>
           </div>
         </div>
-        <div class="upload-row">
-          <input type="text" id="project-name" placeholder="Project name" class="input" />
-          <select id="ide-select" class="input ide-select">
-            <option value="vscode">VS Code</option>
-            <option value="sublime">Sublime Text</option>
-            <option value="eclipse">Eclipse</option>
-            <option value="intellij">IntelliJ IDEA</option>
-            <option value="pycharm">PyCharm</option>
-          </select>
-          <button class="btn btn-primary" id="btn-upload" onclick="uploadProjectToCloud()" disabled>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M3 17v2a2 2 0 002 2h14a2 2 0 002-2v-2"/></svg>
-            Upload
+      </section>
+
+      <!-- ── Projects ── -->
+      <section class="card">
+        <div class="card-header">
+          <h3>Your projects</h3>
+          <button class="link-btn" id="btn-refresh-projects" onclick="refreshCloudProjects()" disabled>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh
           </button>
         </div>
-        <div class="progress-area" id="upload-progress" style="display:none">
-          <div class="progress-track"><div class="progress-fill" id="upload-progress-fill"></div></div>
-          <span class="progress-label" id="upload-status"></span>
+        <div class="project-list" id="projects-list">
+          <div class="empty-state">No projects on your cloud desktop yet.</div>
         </div>
-      </div>
-    </section>
+        <span class="status-msg" id="download-status"></span>
+      </section>
 
-    <!-- ── Projects ── -->
-    <section class="card">
-      <div class="card-header">
-        <h3>Your projects</h3>
-        <button class="link-btn" id="btn-refresh-projects" onclick="refreshCloudProjects()" disabled>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-          Refresh
-        </button>
-      </div>
-      <div class="project-list" id="projects-list">
-        <div class="empty-state">Create a codespace to get started with your projects.</div>
-      </div>
-      <span class="status-msg" id="download-status"></span>
-    </section>
-
-    <!-- ── IDE Settings ── -->
-    <section class="card">
-      <div class="card-header">
-        <h3>IDE Settings</h3>
-      </div>
-      <div class="card-body ide-settings-body">
-        <p class="ide-settings-desc">Save your IDE preferences (themes, keybindings, extensions, plugins) so they persist across sessions.</p>
-        <div class="ide-settings-row">
-          <select id="save-ide-select" class="input ide-select">
-            <option value="vscode">VS Code</option>
-            <option value="sublime">Sublime Text</option>
-            <option value="eclipse">Eclipse</option>
-            <option value="intellij">IntelliJ IDEA</option>
-            <option value="pycharm">PyCharm</option>
-          </select>
-          <button class="btn btn-outline" id="btn-save-ide-config" onclick="saveIDEConfig()" disabled>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            Save settings
-          </button>
-          <button class="btn btn-outline" id="btn-save-all-ide-configs" onclick="saveAllIDEConfigs()" disabled>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            Save all IDEs
-          </button>
+      <!-- ── IDE Settings ── -->
+      <section class="card">
+        <div class="card-header">
+          <h3>IDE Settings</h3>
         </div>
-        <span class="status-msg" id="ide-config-status"></span>
-      </div>
-    </section>
+        <div class="card-body ide-settings-body">
+          <p class="ide-settings-desc">Save your IDE preferences (themes, keybindings, extensions, plugins) so they persist across sessions.</p>
+          <div class="ide-settings-row">
+            <select id="save-ide-select" class="input ide-select">
+              <option value="vscode">VS Code</option>
+              <option value="sublime">Sublime Text</option>
+              <option value="eclipse">Eclipse</option>
+              <option value="intellij">IntelliJ IDEA</option>
+              <option value="pycharm">PyCharm</option>
+            </select>
+            <button class="btn btn-outline" id="btn-save-ide-config" onclick="saveIDEConfig()" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Save settings
+            </button>
+            <button class="btn btn-outline" id="btn-save-all-ide-configs" onclick="saveAllIDEConfigs()" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Save all IDEs
+            </button>
+          </div>
+          <span class="status-msg" id="ide-config-status"></span>
+        </div>
+      </section>
 
-    <!-- ── Log ── -->
+    </div>
+
+    <!-- ── Log (always visible) ── -->
     <details class="card card-log">
       <summary class="card-header card-header-toggle">
         <h3>Activity log</h3>

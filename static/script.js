@@ -8,6 +8,7 @@ var _currentSession    = null;
 var _prevStatus        = null;
 var _selectedFiles     = [];
 var _projectsLoaded    = false;
+var _sessionStopFired  = false;
 
 function initDashboard(supabaseUrl, supabaseAnonKey, backendApiUrl) {
   _supabase   = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
@@ -91,6 +92,11 @@ function initDashboard(supabaseUrl, supabaseAnonKey, backendApiUrl) {
   document.addEventListener("visibilitychange", function() {
     if (!document.hidden) fetchSessionStatus();
   });
+
+  // Auto-stop session when user closes tab or navigates away
+  window.addEventListener("beforeunload", function() {
+    _stopSessionBeacon();
+  });
 }
 
 function _showReadingState() {
@@ -159,8 +165,56 @@ async function getAuthContext() {
   return { access_token: r2.data.session.access_token, user_id: r2.data.session.user.id };
 }
 
+function _stopSessionBeacon() {
+  if (_sessionStopFired) return;
+  if (!_currentSession || _currentSession.status !== "RUNNING") return;
+
+  _sessionStopFired = true;
+  var token = null;
+  try {
+    var storageKey = Object.keys(localStorage).find(function(k) { return k.indexOf("supabase") !== -1 && k.indexOf("auth") !== -1; });
+    if (storageKey) {
+      var data = JSON.parse(localStorage.getItem(storageKey));
+      token = data && data.access_token;
+    }
+  } catch (_) {}
+
+  if (!token) return;
+
+  var url = _backendUrl + "/api/v1/sessions";
+  if (navigator.sendBeacon) {
+    var blob = new Blob([""], { type: "application/json" });
+    var headers = new Headers({ "Authorization": "Bearer " + token });
+    // sendBeacon doesn't support custom headers, use fetch with keepalive
+    try {
+      fetch(url, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer " + token },
+        keepalive: true,
+      });
+    } catch (_) {}
+  } else {
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open("DELETE", url, false);
+      xhr.setRequestHeader("Authorization", "Bearer " + token);
+      xhr.send();
+    } catch (_) {}
+  }
+}
+
 async function handleSignOut() {
   stopPolling(); stopHeartbeat();
+
+  // Stop session before signing out
+  if (_currentSession && (_currentSession.status === "RUNNING" || _currentSession.status === "PROVISIONING" || _currentSession.status === "PENDING")) {
+    try {
+      await apiCall("/api/v1/sessions", "DELETE");
+      log("Session stopped.", "success");
+    } catch (_) {}
+  }
+
+  _sessionStopFired = true;
   await _supabase.auth.signOut();
   window.location.href = "/";
 }
@@ -194,6 +248,7 @@ async function allocateSession() {
   try {
     var session = await apiCall("/api/v1/sessions/allocate", "POST");
     _currentSession = session;
+    _sessionStopFired = false;
     log("Session " + session.session_id.slice(0, 8) + "… provisioning", "success");
     renderSession(session);
     startPolling();
@@ -207,6 +262,7 @@ async function fetchSessionStatus() {
   try {
     var session = await apiCall("/api/v1/sessions/status");
     _currentSession = session;
+    _sessionStopFired = false;
     renderSession(session);
     if (session.status === "RUNNING") {
       if (_prevStatus && _prevStatus !== "RUNNING") {
@@ -243,6 +299,7 @@ async function stopSession() {
     await apiCall("/api/v1/sessions", "DELETE");
     log("Session stopped.", "success");
     _currentSession = null;
+    _sessionStopFired = true;
     stopPolling(); stopHeartbeat(); renderNoSession();
   } catch (err) {
     log("Stop failed: " + err.message, "error");
@@ -265,6 +322,14 @@ function stopPolling()   { clearInterval(_pollInterval); _pollInterval = null; }
 
 /* ── Rendering ── */
 
+function _showWorkspacePanels(show) {
+  var panels = document.getElementById("workspace-panels");
+  if (panels) panels.style.display = show ? "" : "none";
+
+  var hint = document.getElementById("session-hint");
+  if (hint) hint.style.display = show ? "none" : "";
+}
+
 function renderNoSession() {
   var card = document.getElementById("session-card");
   card.className = "card card-session";
@@ -278,6 +343,7 @@ function renderNoSession() {
   _el("btn-stop").style.display = "none";
   _el("btn-allocate").style.display = "";
   setSessionState("idle");
+  _showWorkspacePanels(false);
   _updateTransferButtons(false);
 }
 
@@ -302,16 +368,19 @@ function renderSession(session) {
       _el("btn-connect").href = session.novnc_url;
       _el("btn-connect").style.display = "";
     }
+    _showWorkspacePanels(true);
   } else if (isPending) {
     card.className = "card card-session is-pending";
     document.getElementById("status-text").textContent = session.status;
     setSessionState("allocating");
     _el("btn-connect").style.display = "none";
+    _showWorkspacePanels(false);
   } else {
     card.className = "card card-session";
     document.getElementById("status-text").textContent = session.status || "Stopped";
     setSessionState("idle");
     _el("btn-connect").style.display = "none";
+    _showWorkspacePanels(false);
   }
 
   _updateTransferButtons(isRunning);
@@ -359,8 +428,6 @@ function _updateTransferButtons(sessionRunning) {
   if (sessionRunning && !_projectsLoaded) refreshCloudProjects();
   if (!sessionRunning) {
     _projectsLoaded = false;
-    var list = _el("projects-list");
-    if (list) list.innerHTML = '<div class="empty-state">Create a codespace to get started with your projects.</div>';
   }
 }
 
@@ -520,11 +587,7 @@ async function refreshCloudProjects() {
     }
   } catch (err) {
     _projectsLoaded = true;
-    list.innerHTML = '<div class="empty-state">' +
-      (err.message.indexOf("No active session") !== -1
-        ? "Create a codespace to get started with your projects."
-        : "Could not load projects.") +
-      '</div>';
+    list.innerHTML = '<div class="empty-state">Could not load projects.</div>';
   } finally {
     if (refreshBtn) {
       refreshBtn.disabled = false;
@@ -539,7 +602,7 @@ async function downloadProject(projectName, btn) {
 
   btn.disabled = true;
   btn.textContent = "Exporting…";
-  if (statusEl) statusEl.textContent = "Exporting \"" + projectName + "\"…";
+  if (statusEl) statusEl.textContent = "Syncing \"" + projectName + "\" from cloud desktop…";
   log("Downloading \"" + projectName + "\"…", "info");
 
   try {

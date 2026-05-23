@@ -82,12 +82,56 @@
           <input id="reg-confirm" type="password" placeholder="••••••••" required autocomplete="new-password" />
         </div>
         <div id="register-error" class="error-msg hidden"></div>
-        <div id="register-success" class="success-msg hidden"></div>
+        <div id="register-success" class="confirm-email-banner hidden">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+          <div>
+            <strong>Check your email to confirm your account</strong>
+            <p>We've sent a confirmation link to your email. Click the link to activate your account, then come back and sign in.</p>
+          </div>
+        </div>
         <button type="submit" class="btn-primary" id="register-btn">
           <span class="btn-text">Create Account</span>
           <span class="spinner hidden"></span>
         </button>
       </form>
+    </div>
+
+    <!-- How it works -->
+    <div class="how-it-works">
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>Create an account</h3>
+            <p>Sign up with Google or email. Confirm your email to activate.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>Launch a codespace</h3>
+            <p>Click "New codespace" to spin up a full cloud desktop with VS Code, Sublime, Eclipse, and more.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>Upload your project</h3>
+            <p>Drag and drop files or folders. They'll be available instantly in your cloud IDE.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h3>Code from anywhere</h3>
+            <p>Open your desktop in the browser. Your work syncs automatically and persists across sessions.</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -108,6 +152,7 @@
       document.getElementById("form-register").classList.toggle("hidden", isLogin);
       document.getElementById("tab-login").classList.toggle("active", isLogin);
       document.getElementById("tab-register").classList.toggle("active", !isLogin);
+      document.getElementById("register-success").classList.add("hidden");
     }
 
     function setLoading(btnId, loading) {
@@ -177,9 +222,8 @@
       }
 
       document.getElementById("register-error").classList.add("hidden");
-      const successEl = document.getElementById("register-success");
-      successEl.textContent = "Account created! Check your email to confirm, then sign in.";
-      successEl.classList.remove("hidden");
+      document.getElementById("register-success").classList.remove("hidden");
+      document.getElementById("form-register").querySelector("button[type=submit]").style.display = "none";
     }
   </script>
 </body>
