@@ -3,178 +3,183 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CloudRAMSaaS — Dashboard</title>
+  <title>CloudRAMSaaS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body class="dashboard-page">
 
-  <nav class="navbar">
-    <div class="nav-brand">
-      <svg viewBox="0 0 24 24" fill="none" class="nav-icon">
-        <rect width="24" height="24" rx="6" fill="url(#navgrad)"/>
-        <path d="M6 13.5C6 10.9 8.1 9 10.8 9H11.7a3.9 3.9 0 013.9 3.9v.3h.9a2.4 2.4 0 010 4.8H7.2a2.4 2.4 0 01-1.2-4.5" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
-        <defs>
-          <linearGradient id="navgrad" x1="0" y1="0" x2="24" y2="24">
-            <stop stop-color="#6366f1"/><stop offset="1" stop-color="#8b5cf6"/>
-          </linearGradient>
-        </defs>
-      </svg>
-      <span>CloudRAMSaaS</span>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="topbar-brand" href="/dashboard">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+          <rect width="28" height="28" rx="7" fill="url(#lg)"/>
+          <path d="M7 15.5C7 12.5 9.2 10.5 12.2 10.5h1a4.5 4.5 0 014.5 4.5v.3h1a2.8 2.8 0 010 5.6H8.4A2.8 2.8 0 017 15.5z" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
+          <defs><linearGradient id="lg" x1="0" y1="0" x2="28" y2="28"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+        </svg>
+        <span>CloudRAMSaaS</span>
+      </a>
+      <div class="topbar-right">
+        <span class="topbar-user" id="user-email"></span>
+        <div class="topbar-sep"></div>
+        <button class="link-btn" onclick="handleSignOut()">Sign out</button>
+      </div>
     </div>
-    <div class="nav-right">
-      <span class="user-email" id="user-email">Loading...</span>
-      <button class="btn-ghost" onclick="handleSignOut()">Sign Out</button>
-    </div>
-  </nav>
+  </header>
 
-  <main class="dashboard-main">
+  <div class="page-bg"></div>
 
-    <!-- ── Agent Detection Banner ── -->
-    <div class="agent-card" id="agent-card">
-      <div class="agent-header">
-        <div class="agent-status-row">
-          <div class="agent-indicator" id="agent-indicator">
-            <span class="agent-dot" id="agent-dot"></span>
-            <span id="agent-status-text">Checking for local agent...</span>
+  <main class="container">
+
+    <!-- ── Session ── -->
+    <section class="card card-session" id="session-card">
+      <div class="card-glow" id="card-glow"></div>
+      <div class="session-top">
+        <div class="session-status">
+          <div class="status-indicator" id="status-indicator">
+            <span class="status-ring"></span>
+            <span class="status-dot-inner"></span>
           </div>
-          <span class="agent-platform" id="agent-platform"></span>
+          <div class="session-meta">
+            <h2 class="session-name" id="info-session-id">No active session</h2>
+            <p class="session-detail" id="session-detail">
+              <span id="status-text">Inactive</span>
+              <span class="sep" id="ip-sep"></span>
+              <code id="info-ip"></code>
+            </p>
+          </div>
         </div>
-      </div>
-
-      <!-- Agent not detected -->
-      <div id="agent-download-section" class="agent-download hidden">
-        <p class="agent-desc">
-          The <strong>CloudRAMSaaS Local Agent</strong> must be running on your machine
-          before you can allocate a cloud desktop. It enables secure file sync and
-          local app migration.
-        </p>
-        <div class="agent-download-btns">
-          <a class="btn-download" href="https://raw.githubusercontent.com/Muvvakotesh2000/cloudramsaas-backend-aws/main/applications/CloudRAMSaaS-Agent.exe" download>
-            <svg viewBox="0 0 20 20" fill="currentColor" width="16"><path d="M10 2a1 1 0 011 1v9.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V3a1 1 0 011-1z"/><path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"/></svg>
-            Download for Windows
-          </a>
-          <a class="btn-download btn-download-mac" href="/static/downloads/CloudRAMSaaS-Agent.dmg" download>
-            <svg viewBox="0 0 20 20" fill="currentColor" width="16"><path d="M10 2a1 1 0 011 1v9.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V3a1 1 0 011-1z"/><path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"/></svg>
-            Download for macOS
-          </a>
-        </div>
-        <p class="agent-hint">After installing, launch the agent then refresh this page.</p>
-        <button class="btn-ghost-sm" onclick="checkAgent()">↺ Retry Detection</button>
-      </div>
-
-      <!-- Agent detected -->
-      <div id="agent-detected-section" class="hidden">
-        <p class="agent-detected-msg">
-          ✅ Agent detected on <span id="agent-platform-detail"></span>. You can now allocate your cloud desktop.
-        </p>
-      </div>
-    </div>
-
-    <!-- ── Session Card ── -->
-    <div class="session-card" id="session-card">
-      <div class="session-header">
-        <h2>Cloud Desktop</h2>
-        <div class="status-badge" id="status-badge">
-          <span class="status-dot"></span>
-          <span id="status-text">Checking...</span>
-        </div>
-      </div>
-
-      <div class="session-info" id="session-info">
-        <div class="info-row">
-          <span class="info-label">Session ID</span>
-          <span class="info-value mono" id="info-session-id">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Host IP</span>
-          <span class="info-value mono" id="info-ip">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">noVNC Port</span>
-          <span class="info-value mono" id="info-port">—</span>
-        </div>
-      </div>
-
-      <div class="session-actions">
-        <div id="allocate-wrapper">
-          <button class="btn-primary" id="btn-allocate" onclick="allocateSession()" disabled title="Local agent required">
-            <span>⚡ Allocate Desktop</span>
+        <div class="session-actions" id="session-actions">
+          <button class="btn btn-primary" id="btn-allocate" onclick="allocateSession()">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
+            New codespace
           </button>
-          <span class="agent-required-hint" id="agent-required-hint">Requires local agent</span>
+          <a class="btn btn-outline-bright" id="btn-connect" href="#" target="_blank" rel="noopener noreferrer" style="display:none">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3H3v10h10v-2"/><path d="M9 2h5v5"/><path d="M14 2L7 9"/></svg>
+            Open in browser
+          </a>
+          <button class="btn btn-ghost-danger" id="btn-stop" onclick="stopSession()" style="display:none">Stop codespace</button>
         </div>
-        <button class="btn-danger hidden" id="btn-stop" onclick="stopSession()">
-          Stop Session
+      </div>
+    </section>
+
+    <!-- ── Transfer ── -->
+    <section class="card">
+      <div class="card-header">
+        <h3>Transfer files</h3>
+      </div>
+      <div class="card-body">
+        <div class="dropzone" id="drop-zone">
+          <input type="file" id="file-picker" multiple tabindex="-1" />
+          <input type="file" id="folder-picker" webkitdirectory tabindex="-1" />
+          <div class="dropzone-inner" id="drop-default">
+            <div class="dropzone-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <p class="dropzone-title">Drag and drop your files here</p>
+            <p class="dropzone-sub">or choose from your computer</p>
+            <div class="dropzone-btns">
+              <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('file-picker').click()">Select files</button>
+              <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('folder-picker').click()">Select folder</button>
+            </div>
+          </div>
+          <div class="dropzone-selected" id="drop-selected" style="display:none">
+            <div class="dropzone-file-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+            </div>
+            <span class="dropzone-file-text" id="selected-files-text"></span>
+            <button type="button" class="link-btn" onclick="clearSelectedFiles()">Remove</button>
+          </div>
+        </div>
+        <div class="upload-row">
+          <input type="text" id="project-name" placeholder="Project name" class="input" />
+          <select id="ide-select" class="input ide-select">
+            <option value="vscode">VS Code</option>
+            <option value="sublime">Sublime Text</option>
+            <option value="eclipse">Eclipse</option>
+            <option value="intellij">IntelliJ IDEA</option>
+            <option value="pycharm">PyCharm</option>
+          </select>
+          <button class="btn btn-primary" id="btn-upload" onclick="uploadProjectToCloud()" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M3 17v2a2 2 0 002 2h14a2 2 0 002-2v-2"/></svg>
+            Upload
+          </button>
+        </div>
+        <div class="progress-area" id="upload-progress" style="display:none">
+          <div class="progress-track"><div class="progress-fill" id="upload-progress-fill"></div></div>
+          <span class="progress-label" id="upload-status"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Projects ── -->
+    <section class="card">
+      <div class="card-header">
+        <h3>Your projects</h3>
+        <button class="link-btn" id="btn-refresh-projects" onclick="refreshCloudProjects()" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          Refresh
         </button>
-        <a class="btn-success hidden" id="btn-connect" href="#" target="_blank"
-           rel="noopener noreferrer" onclick="log('Opening desktop in new tab...', 'success')">
-          🖥 Open Desktop
-        </a>
       </div>
-    </div>
-
-    <!-- ── Running Tasks (Local) ── -->
-    <div class="session-card" id="tasks-card">
-      <div class="session-header">
-        <h2>Running Tasks (Local)</h2>
-        <div class="status-badge badge-inactive" id="tasks-badge">
-          <span class="status-dot"></span>
-          <span id="tasks-status-text">Waiting for agent...</span>
-        </div>
+      <div class="project-list" id="projects-list">
+        <div class="empty-state">Create a codespace to get started with your projects.</div>
       </div>
+      <span class="status-msg" id="download-status"></span>
+    </section>
 
-      <div class="session-info">
-
-        <!-- Refresh button — manual only -->
-        <div style="margin-bottom:10px;">
-          <button class="btn-ghost" id="refresh-tasks-btn" onclick="refreshLocalTasks()" disabled>
-            ↺ Refresh Tasks
-          </button>
-          <span class="agent-hint" style="margin-left:8px;">Tasks are not auto-refreshed. Click to update.</span>
-        </div>
-
-        <p id="task-loading" style="color:#6b7280; font-size:0.88rem;">Start the local agent to view tasks.</p>
-        <select id="tasks" multiple size="6" style="width:100%; display:none; background:#111827; color:#e5e7eb; border:1px solid #374151; border-radius:8px; padding:6px;"></select>
-
-        <div class="session-actions" style="margin-top:14px; gap:10px; flex-wrap:wrap; align-items:center;">
-
-          <!-- Migrate VSCode — only shown when Code.exe is in task list -->
-          <button class="btn-success hidden" id="migrate-vscode-btn" type="button">
-            ↑ Migrate VSCode to Cloud
-          </button>
-          <span id="vscode-spinner" style="display:none;" class="spinner-inline"></span>
-          <span id="vscode-status" class="mono" style="font-size:0.82rem;"></span>
-
-          <!-- Save project back to local -->
-          <button class="btn-ghost" id="save-local-btn" type="button" disabled>
-            ↓ Save Project to Local
-          </button>
-          <span id="save-local-spinner" style="display:none;" class="spinner-inline"></span>
-          <span id="save-local-status" class="mono" style="font-size:0.82rem;"></span>
-
-        </div>
-
-        <p class="agent-hint" style="margin-top:12px;">
-          💡 <b>Migrate VSCode</b>: Zips your project → uploads to S3 → VM pulls from S3 → stores on EFS at
-          <code>/workspaces/&lt;user_id&gt;/projects/</code>. Session must be <b>RUNNING</b>.
-        </p>
+    <!-- ── IDE Settings ── -->
+    <section class="card">
+      <div class="card-header">
+        <h3>IDE Settings</h3>
       </div>
-    </div>
+      <div class="card-body ide-settings-body">
+        <p class="ide-settings-desc">Save your IDE preferences (themes, keybindings, extensions, plugins) so they persist across sessions.</p>
+        <div class="ide-settings-row">
+          <select id="save-ide-select" class="input ide-select">
+            <option value="vscode">VS Code</option>
+            <option value="sublime">Sublime Text</option>
+            <option value="eclipse">Eclipse</option>
+            <option value="intellij">IntelliJ IDEA</option>
+            <option value="pycharm">PyCharm</option>
+          </select>
+          <button class="btn btn-outline" id="btn-save-ide-config" onclick="saveIDEConfig()" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save settings
+          </button>
+          <button class="btn btn-outline" id="btn-save-all-ide-configs" onclick="saveAllIDEConfigs()" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save all IDEs
+          </button>
+        </div>
+        <span class="status-msg" id="ide-config-status"></span>
+      </div>
+    </section>
 
-    <!-- ── Activity Log ── -->
-    <div class="log-card">
-      <h3>Activity Log</h3>
+    <!-- ── Log ── -->
+    <details class="card card-log">
+      <summary class="card-header card-header-toggle">
+        <h3>Activity log</h3>
+        <svg class="toggle-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
+      </summary>
       <div class="log-list" id="log-list"></div>
-    </div>
+    </details>
+
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="{{ url_for('static', filename='script.js') }}"></script>
   <script>
     const SUPABASE_URL      = "{{ supabase_url }}";
     const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
     const BACKEND_API_URL   = "{{ backend_api_url }}";
-    const AGENT_URL         = "http://127.0.0.1:7071";
-    initDashboard(SUPABASE_URL, SUPABASE_ANON_KEY, BACKEND_API_URL, AGENT_URL);
+    initDashboard(SUPABASE_URL, SUPABASE_ANON_KEY, BACKEND_API_URL);
   </script>
 </body>
 </html>

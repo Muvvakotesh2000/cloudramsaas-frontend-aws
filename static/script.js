@@ -1,512 +1,663 @@
 "use strict";
 
-let _supabase          = null;
-let _backendUrl        = "";
-let _agentUrl          = "http://127.0.0.1:7071";
-let _pollInterval      = null;
-let _heartbeatInterval = null;
-let _agentInterval     = null;
-let _currentSession    = null;
-let _agentDetected     = false;
+var _supabase          = null;
+var _backendUrl        = "";
+var _pollInterval      = null;
+var _heartbeatInterval = null;
+var _currentSession    = null;
+var _prevStatus        = null;
+var _selectedFiles     = [];
+var _projectsLoaded    = false;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Init
-// ─────────────────────────────────────────────────────────────────────────────
-function initDashboard(supabaseUrl, supabaseAnonKey, backendApiUrl, agentUrl) {
+function initDashboard(supabaseUrl, supabaseAnonKey, backendApiUrl) {
   _supabase   = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
   _backendUrl = backendApiUrl;
-  _agentUrl   = agentUrl || "http://127.0.0.1:7071";
 
-  _supabase.auth.getSession().then(({ data: { session } }) => {
+  _supabase.auth.getSession().then(function(res) {
+    var session = res.data.session;
     if (!session) { window.location.href = "/"; return; }
     document.getElementById("user-email").textContent = session.user.email;
     fetchSessionStatus();
   });
 
-  // Wire buttons
-  document.getElementById("migrate-vscode-btn")?.addEventListener("click", migrateVSCodeProject);
-  document.getElementById("save-local-btn")?.addEventListener("click", saveProjectToLocal);
+  var filePicker   = document.getElementById("file-picker");
+  var folderPicker = document.getElementById("folder-picker");
+  var nameInput    = document.getElementById("project-name");
+  var dropZone     = document.getElementById("drop-zone");
 
-  // Agent detection — fast at first, slow once connected
-  checkAgent();
-  _agentInterval = setInterval(checkAgent, 5000);
+  if (filePicker) {
+    filePicker.addEventListener("click", function() { filePicker.value = ""; });
+    filePicker.addEventListener("change", function() {
+      _selectedFiles = Array.from(filePicker.files);
+      if (folderPicker) folderPicker.value = "";
+      if (_selectedFiles.length && nameInput) {
+        nameInput.value = _selectedFiles[0].name.replace(/\.[^.]+$/, "");
+      }
+      _renderFileSelection();
+    });
+  }
 
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) { fetchSessionStatus(); checkAgent(); }
+  if (folderPicker) {
+    folderPicker.addEventListener("click", function() { folderPicker.value = ""; });
+    folderPicker.addEventListener("change", function() {
+      _showReadingState();
+      requestAnimationFrame(function() {
+        _selectedFiles = Array.from(folderPicker.files);
+        if (filePicker) filePicker.value = "";
+        if (_selectedFiles.length && _selectedFiles[0].webkitRelativePath && nameInput) {
+          nameInput.value = _selectedFiles[0].webkitRelativePath.split("/")[0];
+        }
+        _renderFileSelection();
+      });
+    });
+  }
+
+  if (nameInput) {
+    nameInput.addEventListener("input", function() {
+      _updateTransferButtons(_currentSession && _currentSession.status === "RUNNING");
+    });
+  }
+
+  if (dropZone) {
+    ["dragenter", "dragover"].forEach(function(evt) {
+      dropZone.addEventListener(evt, function(e) {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+    });
+    ["dragleave", "drop"].forEach(function(evt) {
+      dropZone.addEventListener(evt, function(e) {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+      });
+    });
+    dropZone.addEventListener("drop", function(e) {
+      var files = Array.from(e.dataTransfer.files);
+      if (!files.length) return;
+      _selectedFiles = files;
+      if (filePicker) filePicker.value = "";
+      if (folderPicker) folderPicker.value = "";
+      if (nameInput && !nameInput.value.trim() && files.length === 1) {
+        nameInput.value = files[0].name.replace(/\.[^.]+$/, "");
+      }
+      _renderFileSelection();
+    });
+  }
+
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+
+  document.addEventListener("visibilitychange", function() {
+    if (!document.hidden) fetchSessionStatus();
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Agent detection
-// ─────────────────────────────────────────────────────────────────────────────
-async function checkAgent() {
-  try {
-    const resp = await fetch(`${_agentUrl}/health`, {
-      method: "GET",
-      signal: AbortSignal.timeout(2000),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data.ok) { setAgentDetected(true, data.platform || "Unknown"); return; }
-    }
-    setAgentDetected(false);
-  } catch (_) {
-    setAgentDetected(false);
-  }
+function _showReadingState() {
+  var defEl = document.getElementById("drop-default");
+  var selEl = document.getElementById("drop-selected");
+  var txt   = document.getElementById("selected-files-text");
+  if (defEl) defEl.style.display = "none";
+  if (selEl) selEl.style.display = "flex";
+  if (txt) txt.textContent = "Reading folder…";
 }
 
-function setAgentDetected(detected, platformName) {
-  _agentDetected = detected;
+function _renderFileSelection() {
+  var defEl = document.getElementById("drop-default");
+  var selEl = document.getElementById("drop-selected");
+  var txt   = document.getElementById("selected-files-text");
 
-  const dot            = document.getElementById("agent-dot");
-  const statusText     = document.getElementById("agent-status-text");
-  const downloadSec    = document.getElementById("agent-download-section");
-  const detectedSec    = document.getElementById("agent-detected-section");
-  const platformDetail = document.getElementById("agent-platform-detail");
-  const allocBtn       = document.getElementById("btn-allocate");
-  const hint           = document.getElementById("agent-required-hint");
-  const refreshBtn     = document.getElementById("refresh-tasks-btn");
-
-  if (detected) {
-    dot.className          = "agent-dot dot-online";
-    statusText.textContent = "Local Agent: Connected";
-    document.getElementById("agent-platform").textContent = platformName;
-    downloadSec.classList.add("hidden");
-    detectedSec.classList.remove("hidden");
-    if (platformDetail) platformDetail.textContent = platformName;
-
-    // Enable allocate only if no active session
-    if (!_currentSession || ["STOPPED","DEPROVISIONING","DELETED"].includes(_currentSession.status)) {
-      allocBtn.disabled = false;
-      allocBtn.title    = "";
-      if (hint) hint.classList.add("hidden");
-    }
-
-    // Enable refresh tasks button
-    if (refreshBtn) refreshBtn.disabled = false;
-
-    // Slow down agent polling once confirmed running
-    clearInterval(_agentInterval);
-    _agentInterval = setInterval(checkAgent, 10000);
-
+  if (_selectedFiles.length) {
+    var totalMB = (_selectedFiles.reduce(function(s, f) { return s + f.size; }, 0) / (1024 * 1024)).toFixed(1);
+    if (defEl) defEl.style.display = "none";
+    if (selEl) selEl.style.display = "flex";
+    if (txt) txt.textContent = _selectedFiles.length + " file" + (_selectedFiles.length > 1 ? "s" : "") + " · " + totalMB + " MB";
   } else {
-    dot.className          = "agent-dot dot-offline";
-    statusText.textContent = "Local Agent: Not detected";
-    document.getElementById("agent-platform").textContent = "";
-    downloadSec.classList.remove("hidden");
-    detectedSec.classList.add("hidden");
-    allocBtn.disabled = true;
-    allocBtn.title    = "Start the local agent first";
-    if (hint) hint.classList.remove("hidden");
-
-    // Disable task controls
-    if (refreshBtn) refreshBtn.disabled = true;
-    _resetTasksUI("Start the local agent to view tasks.");
-    _setMigrationButtons(false, false, false);
+    if (defEl) defEl.style.display = "";
+    if (selEl) selEl.style.display = "none";
   }
+  _updateTransferButtons(_currentSession && _currentSession.status === "RUNNING");
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Auth helpers
-// ─────────────────────────────────────────────────────────────────────────────
+function clearSelectedFiles() {
+  _selectedFiles = [];
+  var fp = document.getElementById("file-picker");
+  var fl = document.getElementById("folder-picker");
+  if (fp) fp.value = "";
+  if (fl) fl.value = "";
+  _renderFileSelection();
+}
+
+function _resetUploadForm() {
+  _selectedFiles = [];
+  var fp = document.getElementById("file-picker");
+  var fl = document.getElementById("folder-picker");
+  var ni = document.getElementById("project-name");
+  if (fp) fp.value = "";
+  if (fl) fl.value = "";
+  if (ni) ni.value = "";
+  _renderFileSelection();
+}
+
+/* ── Auth ── */
+
 async function getAuthToken() {
-  const { data: { session } } = await _supabase.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  return session.access_token;
+  var r = await _supabase.auth.getSession();
+  if (!r.data.session) throw new Error("Not authenticated");
+  return r.data.session.access_token;
 }
 
-// FIX: always refresh the Supabase session before returning the token
-// so the agent never forwards a stale/expired token to the backend
 async function getAuthContext() {
   try {
-    const { data: { session }, error } = await _supabase.auth.refreshSession();
-    if (!error && session) {
-      return { access_token: session.access_token, user_id: session.user.id };
+    var r = await _supabase.auth.refreshSession();
+    if (!r.error && r.data.session) {
+      return { access_token: r.data.session.access_token, user_id: r.data.session.user.id };
     }
-  } catch (_) {
-    // fall through to getSession fallback
-  }
-  // Fallback: use existing session if refresh fails
-  const { data: { session } } = await _supabase.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  return { access_token: session.access_token, user_id: session.user.id };
+  } catch (_) {}
+  var r2 = await _supabase.auth.getSession();
+  if (!r2.data.session) throw new Error("Not authenticated");
+  return { access_token: r2.data.session.access_token, user_id: r2.data.session.user.id };
 }
 
 async function handleSignOut() {
   stopPolling(); stopHeartbeat();
-  clearInterval(_agentInterval);
   await _supabase.auth.signOut();
   window.location.href = "/";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Backend API
-// ─────────────────────────────────────────────────────────────────────────────
-async function apiCall(path, method = "GET", body = null) {
-  const token = await getAuthToken();
-  const opts  = { method, headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } };
+/* ── API ── */
+
+async function apiCall(path, method, body) {
+  var token = await getAuthToken();
+  var opts  = { method: method || "GET", headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" } };
   if (body) opts.body = JSON.stringify(body);
-  const resp = await fetch(`${_backendUrl}${path}`, opts);
+  var resp = await fetch(_backendUrl + path, opts);
   if (resp.status === 204) return null;
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
-  return data;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Agent API  — passes auth context in every POST body
-// ─────────────────────────────────────────────────────────────────────────────
-async function agentCall(path, method = "GET", body = null) {
-  const opts = { method, headers: { "Content-Type": "application/json" } };
-  if (method !== "GET") {
-    const ctx  = await getAuthContext();
-    opts.body  = JSON.stringify({ ...(body || {}), ...ctx });
+  var data = await resp.json();
+  if (!resp.ok) {
+    var msg;
+    if (Array.isArray(data.detail)) {
+      msg = data.detail.map(function(e) { return e.msg || JSON.stringify(e); }).join("; ");
+    } else {
+      msg = data.detail || ("HTTP " + resp.status);
+    }
+    throw new Error(msg);
   }
-  const resp = await fetch(`${_agentUrl}${path}`, opts);
-  if (resp.status === 204) return null;
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(data.detail || `Agent HTTP ${resp.status}`);
   return data;
 }
 
-function getRunningVmIp() {
-  return (_currentSession?.status === "RUNNING") ? (_currentSession.private_ip || null) : null;
-}
+/* ── Session ── */
 
-// FIX: removed duplicate definition that was always returning 5000
-function getRunningApiPort() {
-  return (_currentSession?.status === "RUNNING") ? (_currentSession.api_port || 7000) : 7000;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Session actions
-// ─────────────────────────────────────────────────────────────────────────────
 async function allocateSession() {
-  if (!_agentDetected) { log("Local agent not detected. Install and start the agent first.", "error"); return; }
-  log("Requesting session allocation...", "info");
-  setButtonState("allocating");
+  log("Requesting session allocation…", "info");
+  setSessionState("allocating");
   try {
-    const session   = await apiCall("/api/v1/sessions/allocate", "POST");
+    var session = await apiCall("/api/v1/sessions/allocate", "POST");
     _currentSession = session;
-    log(`Session ${session.session_id.slice(0,8)}... provisioning started`, "success");
+    log("Session " + session.session_id.slice(0, 8) + "… provisioning", "success");
     renderSession(session);
     startPolling();
   } catch (err) {
-    log(`Allocation failed: ${err.message}`, "error");
-    setButtonState("idle");
+    log("Allocation failed: " + err.message, "error");
+    setSessionState("idle");
   }
 }
 
 async function fetchSessionStatus() {
   try {
-    const session   = await apiCall("/api/v1/sessions/status");
+    var session = await apiCall("/api/v1/sessions/status");
     _currentSession = session;
     renderSession(session);
     if (session.status === "RUNNING") {
+      if (_prevStatus && _prevStatus !== "RUNNING") {
+        _notifyReady();
+      }
       stopPolling(); startHeartbeat();
-    } else if (["PROVISIONING","PENDING"].includes(session.status)) {
+    } else if (session.status === "PROVISIONING" || session.status === "PENDING") {
       startPolling();
     } else {
-      stopPolling(); stopHeartbeat(); setButtonState("idle");
+      stopPolling(); stopHeartbeat(); setSessionState("idle");
     }
+    _prevStatus = session.status;
   } catch (err) {
-    if (err.message.includes("404") || err.message.toLowerCase().includes("no active session")) {
-      renderNoSession();
-    } else {
-      log(`Status check failed: ${err.message}`, "warning");
-      renderNoSession();
-    }
+    _prevStatus = null;
+    renderNoSession();
   }
 }
 
+function _notifyReady() {
+  log("Codespace is ready.", "success");
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification("CloudRAMSaaS", { body: "Your codespace is ready.", icon: "/static/favicon.ico" });
+  } else if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+  try { document.title = "✓ CloudRAMSaaS — Ready"; setTimeout(function() { document.title = "CloudRAMSaaS"; }, 5000); } catch(_) {}
+}
+
 async function stopSession() {
-  if (!confirm("Stop your cloud desktop? Workspace files on EFS are preserved.")) return;
-  log("Stopping session...", "info");
-  setButtonState("stopping");
+  if (!confirm("Stop your cloud desktop? Your files will be preserved.")) return;
+  log("Stopping session…", "info");
+  setSessionState("stopping");
   try {
     await apiCall("/api/v1/sessions", "DELETE");
     log("Session stopped.", "success");
     _currentSession = null;
     stopPolling(); stopHeartbeat(); renderNoSession();
   } catch (err) {
-    log(`Stop failed: ${err.message}`, "error");
-    setButtonState("running");
+    log("Stop failed: " + err.message, "error");
+    setSessionState("running");
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Heartbeat / Polling
-// ─────────────────────────────────────────────────────────────────────────────
+/* ── Heartbeat / Polling ── */
+
 function startHeartbeat() {
   if (_heartbeatInterval) return;
-  _heartbeatInterval = setInterval(async () => {
+  _heartbeatInterval = setInterval(async function() {
     try { await apiCall("/api/v1/sessions/heartbeat", "POST"); }
     catch (_) { fetchSessionStatus(); }
-  }, 30_000);
+  }, 30000);
 }
 function stopHeartbeat() { clearInterval(_heartbeatInterval); _heartbeatInterval = null; }
-function startPolling()  { if (_pollInterval) return; _pollInterval = setInterval(fetchSessionStatus, 5_000); }
+function startPolling()  { if (_pollInterval) return; _pollInterval = setInterval(fetchSessionStatus, 5000); }
 function stopPolling()   { clearInterval(_pollInterval); _pollInterval = null; }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UI rendering
-// ─────────────────────────────────────────────────────────────────────────────
+/* ── Rendering ── */
+
 function renderNoSession() {
-  setBadge("inactive", "No Session");
-  document.getElementById("info-session-id").textContent = "—";
-  document.getElementById("info-ip").textContent         = "—";
-  document.getElementById("info-port").textContent       = "—";
-  document.getElementById("btn-allocate").classList.remove("hidden");
-  document.getElementById("btn-stop").classList.add("hidden");
-  document.getElementById("btn-connect").classList.add("hidden");
-  document.getElementById("btn-allocate").disabled = !_agentDetected;
-  const hint = document.getElementById("agent-required-hint");
-  if (hint) hint.classList.toggle("hidden", _agentDetected);
-  setButtonState("idle");
-  _setMigrationButtons(false, false, false);
+  var card = document.getElementById("session-card");
+  card.className = "card card-session";
+
+  document.getElementById("info-session-id").textContent = "No active session";
+  document.getElementById("info-ip").textContent = "";
+  document.getElementById("ip-sep").style.display = "none";
+  document.getElementById("status-text").textContent = "Inactive";
+
+  _el("btn-connect").style.display = "none";
+  _el("btn-stop").style.display = "none";
+  _el("btn-allocate").style.display = "";
+  setSessionState("idle");
+  _updateTransferButtons(false);
 }
 
 function renderSession(session) {
-  document.getElementById("info-session-id").textContent =
-    session.session_id ? session.session_id.slice(0,8) + "..." : "—";
-  document.getElementById("info-ip").textContent   = session.private_ip || "Pending...";
-  document.getElementById("info-port").textContent = session.novnc_port || 6080;
+  var card = document.getElementById("session-card");
 
-  const isRunning      = session.status === "RUNNING";
-  const isProvisioning = ["PROVISIONING","PENDING"].includes(session.status);
-  const isStopped      = ["STOPPED","DEPROVISIONING","DELETED"].includes(session.status);
+  document.getElementById("info-session-id").textContent =
+    session.session_id ? session.session_id.slice(0, 8) + "…" : "—";
+
+  var ip = session.private_ip;
+  document.getElementById("info-ip").textContent = ip || "";
+  document.getElementById("ip-sep").style.display = ip ? "" : "none";
+
+  var isRunning = session.status === "RUNNING";
+  var isPending = session.status === "PROVISIONING" || session.status === "PENDING";
 
   if (isRunning) {
-    setBadge("running", "Running");
-    setButtonState("running");
+    card.className = "card card-session is-running";
+    document.getElementById("status-text").textContent = "Running";
+    setSessionState("running");
     if (session.novnc_url) {
-      const btn = document.getElementById("btn-connect");
-      btn.href  = session.novnc_url;
-      btn.classList.remove("hidden");
+      _el("btn-connect").href = session.novnc_url;
+      _el("btn-connect").style.display = "";
     }
-  } else if (isProvisioning) {
-    setBadge("provisioning", session.status);
-    setButtonState("allocating");
-    document.getElementById("btn-connect").classList.add("hidden");
-  } else if (isStopped) {
-    setBadge("inactive", "Stopped");
-    setButtonState("idle");
-    document.getElementById("btn-connect").classList.add("hidden");
+  } else if (isPending) {
+    card.className = "card card-session is-pending";
+    document.getElementById("status-text").textContent = session.status;
+    setSessionState("allocating");
+    _el("btn-connect").style.display = "none";
   } else {
-    setBadge("unknown", session.status);
+    card.className = "card card-session";
+    document.getElementById("status-text").textContent = session.status || "Stopped";
+    setSessionState("idle");
+    _el("btn-connect").style.display = "none";
   }
 
-  // Save-to-local only makes sense when session is running
-  const saveBtn = document.getElementById("save-local-btn");
-  if (saveBtn) saveBtn.disabled = !isRunning;
+  _updateTransferButtons(isRunning);
 }
 
-function setBadge(type, label) {
-  document.getElementById("status-badge").className = `status-badge badge-${type}`;
-  document.getElementById("status-text").textContent = label;
-}
+function setSessionState(state) {
+  var alloc = _el("btn-allocate");
+  var stop  = _el("btn-stop");
 
-function setButtonState(state) {
-  const allocBtn = document.getElementById("btn-allocate");
-  const stopBtn  = document.getElementById("btn-stop");
   if (state === "idle") {
-    allocBtn.disabled   = !_agentDetected;
-    allocBtn.innerHTML  = "<span>⚡ Allocate Desktop</span>";
-    allocBtn.classList.remove("hidden");
-    stopBtn.classList.add("hidden");
+    alloc.disabled = false;
+    alloc.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg> New codespace';
+    alloc.style.display = "";
+    stop.style.display = "none";
   } else if (state === "allocating") {
-    allocBtn.disabled  = true;
-    allocBtn.innerHTML = '<span class="spinner-inline"></span><span>Provisioning...</span>';
-    allocBtn.classList.remove("hidden");
-    stopBtn.classList.add("hidden");
+    alloc.disabled = true;
+    alloc.innerHTML = '<span class="spinner-inline"></span> Provisioning…';
+    alloc.style.display = "";
+    stop.style.display = "none";
   } else if (state === "running") {
-    allocBtn.classList.add("hidden");
-    stopBtn.classList.remove("hidden");
-    stopBtn.disabled    = false;
-    stopBtn.textContent = "Stop Session";
+    alloc.style.display = "none";
+    stop.style.display = "";
+    stop.disabled = false;
+    stop.textContent = "Stop codespace";
   } else if (state === "stopping") {
-    stopBtn.disabled    = true;
-    stopBtn.textContent = "Stopping...";
+    stop.disabled = true;
+    stop.textContent = "Stopping…";
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tasks — MANUAL refresh only (no auto-refresh)
-// ─────────────────────────────────────────────────────────────────────────────
-function setTasksBadge(type, label) {
-  const badge = document.getElementById("tasks-badge");
-  if (!badge) return;
-  badge.className = `status-badge badge-${type}`;
-  document.getElementById("tasks-status-text").textContent = label;
-}
+function _updateTransferButtons(sessionRunning) {
+  var uploadBtn  = _el("btn-upload");
+  var refreshBtn = _el("btn-refresh-projects");
+  var nameInput  = _el("project-name");
+  var hasFiles   = _selectedFiles.length > 0;
+  var hasName    = nameInput && nameInput.value.trim();
+  if (uploadBtn)  uploadBtn.disabled  = !sessionRunning || !hasFiles || !hasName;
+  if (refreshBtn) refreshBtn.disabled = !sessionRunning;
 
-function _resetTasksUI(msg) {
-  const loading = document.getElementById("task-loading");
-  const select  = document.getElementById("tasks");
-  if (loading) { loading.style.display = "block"; loading.textContent = msg || ""; }
-  if (select)  { select.style.display = "none"; select.innerHTML = ""; }
-  setTasksBadge("inactive", "Waiting for agent...");
-}
+  var saveBtn    = _el("btn-save-ide-config");
+  var saveAllBtn = _el("btn-save-all-ide-configs");
+  if (saveBtn)    saveBtn.disabled    = !sessionRunning;
+  if (saveAllBtn) saveAllBtn.disabled = !sessionRunning;
 
-function _setMigrationButtons(hasTasks, hasVSCode, sessionRunning) {
-  const vscodeBtn  = document.getElementById("migrate-vscode-btn");
-  const saveBtn    = document.getElementById("save-local-btn");
-
-  if (vscodeBtn) {
-    if (hasVSCode) {
-      vscodeBtn.classList.remove("hidden");
-      vscodeBtn.disabled = !sessionRunning;
-      vscodeBtn.title    = sessionRunning ? "" : "Session must be RUNNING to migrate";
-    } else {
-      vscodeBtn.classList.add("hidden");
-    }
+  if (sessionRunning && !_projectsLoaded) refreshCloudProjects();
+  if (!sessionRunning) {
+    _projectsLoaded = false;
+    var list = _el("projects-list");
+    if (list) list.innerHTML = '<div class="empty-state">Create a codespace to get started with your projects.</div>';
   }
-
-  if (saveBtn) saveBtn.disabled = !sessionRunning;
 }
 
-async function refreshLocalTasks() {
-  const loading    = document.getElementById("task-loading");
-  const select     = document.getElementById("tasks");
-  const refreshBtn = document.getElementById("refresh-tasks-btn");
+function _el(id) { return document.getElementById(id); }
 
-  if (!loading || !select) return;
+/* ── Upload ── */
 
-  if (!_agentDetected) {
-    _resetTasksUI("Start the local agent to view tasks.");
-    _setMigrationButtons(false, false, false);
-    return;
-  }
+async function uploadProjectToCloud() {
+  if (!_currentSession || _currentSession.status !== "RUNNING") { log("Session must be running.", "warning"); return; }
+  if (!_selectedFiles.length) { log("Select files first.", "warning"); return; }
 
-  if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = "Refreshing..."; }
+  var nameInput   = _el("project-name");
+  var projectName = nameInput && nameInput.value.trim();
+  if (!projectName) { log("Enter a project name.", "warning"); return; }
+
+  var ideSelect    = _el("ide-select");
+  var selectedIde  = ideSelect ? ideSelect.value : "vscode";
+  var ideName      = ideSelect ? ideSelect.options[ideSelect.selectedIndex].text : "VS Code";
+  var uploadBtn    = _el("btn-upload");
+  var statusEl     = _el("upload-status");
+  var progressDiv  = _el("upload-progress");
+  var progressFill = _el("upload-progress-fill");
+
+  uploadBtn.disabled = true;
+  progressDiv.style.display = "";
+  progressFill.style.width = "0%";
+  statusEl.textContent = "Preparing…";
+  log("Packaging " + _selectedFiles.length + " file(s) for " + ideName + "…", "info");
 
   try {
-    setTasksBadge("provisioning", "Fetching...");
-    loading.style.display = "block";
-    loading.textContent   = "Fetching running tasks...";
-    select.style.display  = "none";
-
-    const data  = await agentCall("/running_tasks", "GET");
-    const tasks = data?.tasks || [];
-
-    select.innerHTML = "";
-    tasks.forEach(t => {
-      const opt       = document.createElement("option");
-      opt.value       = t.name;
-      opt.textContent = `${t.name}  (pid ${t.pid})`;
-      select.appendChild(opt);
-    });
-
-    if (tasks.length > 0) {
-      loading.style.display = "none";
-      select.style.display  = "block";
-    } else {
-      loading.style.display = "block";
-      loading.textContent   = "No tracked tasks running (notepad++.exe, chrome.exe, Code.exe).";
-      select.style.display  = "none";
+    var zip = new JSZip();
+    for (var i = 0; i < _selectedFiles.length; i++) {
+      var file = _selectedFiles[i];
+      var relPath = file.webkitRelativePath;
+      var zipPath;
+      if (relPath && relPath.indexOf("/") !== -1) {
+        zipPath = relPath.split("/").slice(1).join("/");
+      }
+      if (!zipPath) zipPath = file.name;
+      zip.file(zipPath, file);
     }
 
-    const vmIp      = getRunningVmIp();
-    const hasVSCode = tasks.some(t => (t.name || "").toLowerCase() === "code.exe");
+    statusEl.textContent = "Zipping…";
+    var zipBlob = await zip.generateAsync(
+      { type: "blob", compression: "STORE" },
+      function(meta) {
+        progressFill.style.width = (meta.percent * 0.2) + "%";
+        statusEl.textContent = "Zipping… " + Math.round(meta.percent) + "%";
+      }
+    );
 
-    _setMigrationButtons(tasks.length > 0, hasVSCode, !!vmIp);
-    setTasksBadge(tasks.length > 0 ? "running" : "inactive", `${tasks.length} task(s) found`);
-    log(`Tasks refreshed — ${tasks.length} running`, "info");
+    var sizeMB = (zipBlob.size / (1024 * 1024)).toFixed(1);
+    statusEl.textContent = "Uploading " + sizeMB + " MB…";
+    progressFill.style.width = "20%";
 
-  } catch (err) {
-    setTasksBadge("unknown", "Error");
-    loading.style.display = "block";
-    loading.textContent   = `Failed to fetch tasks: ${err.message}`;
-    select.style.display  = "none";
-    log(`Task fetch failed: ${err.message}`, "warning");
-  } finally {
-    if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.textContent = "↺ Refresh Tasks"; }
-  }
-}
+    var token = await getAuthToken();
+    var formData = new FormData();
+    formData.append("file", zipBlob, projectName + ".zip");
+    formData.append("project_name", projectName);
+    formData.append("ide", selectedIde);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Migrate VSCode project  →  S3 (via presigned PUT)  →  EFS on VM
-// ─────────────────────────────────────────────────────────────────────────────
-async function migrateVSCodeProject() {
-  const vmIp = getRunningVmIp();
-  if (!vmIp) { log("Session must be RUNNING to migrate VSCode project.", "warning"); return; }
-
-  const spinner  = document.getElementById("vscode-spinner");
-  const statusEl = document.getElementById("vscode-status");
-
-  spinner.style.display = "inline-block";
-  statusEl.textContent  = "Zipping project + uploading to S3...";
-  log("VSCode migration started — zipping and uploading to S3...", "info");
-
-  try {
-    const resp = await agentCall("/migrate_vscode", "POST", { vm_ip: vmIp, api_port: getRunningApiPort() });
-
-    statusEl.textContent = resp.message || "VSCode project migrated to cloud desktop.";
-    if (resp.opened_path) statusEl.textContent += ` (${resp.opened_path})`;
-    log(`VSCode migrated successfully. VM will extract to EFS.`, "success");
-
-    await refreshLocalTasks();
-
-  } catch (err) {
-    statusEl.textContent = `Failed: ${err.message}`;
-    log(`VSCode migration failed: ${err.message}`, "error");
-  } finally {
-    spinner.style.display = "none";
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Save project from VM EFS → S3 → local machine
-// ─────────────────────────────────────────────────────────────────────────────
-async function saveProjectToLocal() {
-  const vmIp = getRunningVmIp();
-  if (!vmIp) { log("Session must be RUNNING to save project to local.", "warning"); return; }
-
-  const projectName = prompt("Enter the project name to download from your cloud desktop:");
-  if (!projectName?.trim()) return;
-
-  const spinner  = document.getElementById("save-local-spinner");
-  const statusEl = document.getElementById("save-local-status");
-
-  spinner.style.display = "inline-block";
-  statusEl.textContent  = "Exporting from EFS → S3 → local...";
-
-  try {
-    const resp = await agentCall("/save_project_to_local", "POST", {
-      vm_ip:        vmIp,
-      api_port:     getRunningApiPort(),
-      project_name: projectName.trim(),
+    var vmData = await new Promise(function(resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+          progressFill.style.width = (20 + (e.loaded / e.total) * 50) + "%";
+          statusEl.textContent = "Uploading… " + Math.round((e.loaded / e.total) * 100) + "%";
+        }
+      };
+      xhr.onload = function() {
+        try {
+          var data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+          else {
+            var msg = Array.isArray(data.detail)
+              ? data.detail.map(function(e) { return e.msg || JSON.stringify(e); }).join("; ")
+              : (data.detail || "HTTP " + xhr.status);
+            reject(new Error(msg));
+          }
+        } catch (_) { reject(new Error("Upload failed: HTTP " + xhr.status)); }
+      };
+      xhr.onerror = function() { reject(new Error("Network error")); };
+      xhr.open("POST", _backendUrl + "/api/v1/vm/upload_project");
+      xhr.setRequestHeader("Authorization", "Bearer " + token);
+      xhr.send(formData);
     });
-    statusEl.textContent = resp.message || "Saved.";
-    log(`Saved "${projectName}" to local machine.`, "success");
+
+    progressFill.style.width = "75%";
+    statusEl.textContent = "Setting up on cloud desktop…";
+
+    if (vmData.job_id) {
+      for (var j = 0; j < 60; j++) {
+        await new Promise(function(r) { setTimeout(r, j === 0 ? 500 : 2000); });
+        try {
+          var job = await apiCall("/api/v1/vm/setup_status/" + vmData.job_id);
+          if (job.status === "done") {
+            progressFill.style.width = "100%";
+            statusEl.textContent = "Project ready in " + ideName + ".";
+            log("\"" + projectName + "\" uploaded and opened in " + ideName + ".", "success");
+            _resetUploadForm();
+            refreshCloudProjects();
+            return;
+          }
+          if (job.status === "error") throw new Error(job.message || "Setup failed");
+          statusEl.textContent = job.message || "Setting up…";
+          progressFill.style.width = (75 + Math.min(j, 20)) + "%";
+        } catch (pollErr) {
+          if (pollErr.message.indexOf("failed") !== -1) throw pollErr;
+        }
+      }
+      throw new Error("Setup timed out");
+    }
+
+    progressFill.style.width = "100%";
+    statusEl.textContent = "Uploaded.";
+    log("\"" + projectName + "\" uploaded.", "success");
+    _resetUploadForm();
+    refreshCloudProjects();
+
   } catch (err) {
-    statusEl.textContent = `Failed: ${err.message}`;
-    log(`Save failed: ${err.message}`, "error");
+    statusEl.textContent = "Failed: " + err.message;
+    log("Upload failed: " + err.message, "error");
   } finally {
-    spinner.style.display = "none";
+    _updateTransferButtons(_currentSession && _currentSession.status === "RUNNING");
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Log
-// ─────────────────────────────────────────────────────────────────────────────
-function log(msg, type = "info") {
-  const list  = document.getElementById("log-list");
-  const entry = document.createElement("div");
-  entry.className = `log-entry log-${type}`;
-  const time  = new Date().toLocaleTimeString();
-  entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg">${escapeHtml(msg)}</span>`;
+/* ── Projects ── */
+
+async function refreshCloudProjects() {
+  var list       = _el("projects-list");
+  var refreshBtn = _el("btn-refresh-projects");
+  if (!list) return;
+
+  if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="spin-icon"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Loading…'; }
+  list.innerHTML = '<div class="empty-state">Loading…</div>';
+
+  try {
+    var data = await apiCall("/api/v1/vm/projects");
+    var projects = data.projects || [];
+    _projectsLoaded = true;
+
+    if (!projects.length) {
+      list.innerHTML = '<div class="empty-state">No projects on your cloud desktop yet.</div>';
+      return;
+    }
+
+    list.innerHTML = "";
+    for (var i = 0; i < projects.length; i++) {
+      var name = projects[i];
+      var row = document.createElement("div");
+      row.className = "project-row";
+      row.innerHTML =
+        '<span class="project-name">' + escapeHtml(name) + '</span>' +
+        '<button class="btn btn-sm btn-outline" onclick="downloadProject(\'' + escapeHtml(name) + '\', this)">Download</button>';
+      list.appendChild(row);
+    }
+  } catch (err) {
+    _projectsLoaded = true;
+    list.innerHTML = '<div class="empty-state">' +
+      (err.message.indexOf("No active session") !== -1
+        ? "Create a codespace to get started with your projects."
+        : "Could not load projects.") +
+      '</div>';
+  } finally {
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Refresh';
+    }
+  }
+}
+
+async function downloadProject(projectName, btn) {
+  var statusEl = _el("download-status");
+  var origHTML = btn.innerHTML;
+
+  btn.disabled = true;
+  btn.textContent = "Exporting…";
+  if (statusEl) statusEl.textContent = "Exporting \"" + projectName + "\"…";
+  log("Downloading \"" + projectName + "\"…", "info");
+
+  try {
+    var ctx = await getAuthContext();
+    var exportData = await apiCall("/api/v1/vm/export_project", "POST", { project_name: projectName });
+
+    btn.textContent = "Downloading…";
+    if (statusEl) statusEl.textContent = "Generating download link…";
+    var signResp = await apiCall("/api/v1/s3/sign_get", "POST", {
+      user_id: ctx.user_id,
+      bucket: exportData.bucket,
+      key: exportData.key,
+    });
+
+    var a = document.createElement("a");
+    a.href = signResp.url;
+    a.download = projectName + ".zip";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    if (statusEl) statusEl.textContent = "\"" + projectName + "\" download started.";
+    log("\"" + projectName + "\" download started.", "success");
+
+  } catch (err) {
+    if (statusEl) statusEl.textContent = "Failed: " + err.message;
+    log("Download failed: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
+/* ── IDE Settings ── */
+
+async function saveIDEConfig() {
+  if (!_currentSession || _currentSession.status !== "RUNNING") { log("Session must be running.", "warning"); return; }
+
+  var ideSelect = _el("save-ide-select");
+  var ide       = ideSelect ? ideSelect.value : "vscode";
+  var ideName   = ideSelect ? ideSelect.options[ideSelect.selectedIndex].text : "VS Code";
+  var btn       = _el("btn-save-ide-config");
+  var statusEl  = _el("ide-config-status");
+  var origHTML  = btn.innerHTML;
+
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  if (statusEl) statusEl.textContent = "Saving " + ideName + " settings…";
+  log("Saving " + ideName + " settings…", "info");
+
+  try {
+    var result = await apiCall("/api/v1/vm/save_ide_config", "POST", { ide: ide });
+    if (result.saved) {
+      if (statusEl) statusEl.textContent = ideName + " settings saved (" + result.files + " files).";
+      log(ideName + " settings saved successfully.", "success");
+    } else {
+      if (statusEl) statusEl.textContent = "Nothing to save: " + (result.reason || "no config found.");
+      log(ideName + ": " + (result.reason || "no config found."), "warning");
+    }
+  } catch (err) {
+    if (statusEl) statusEl.textContent = "Failed: " + err.message;
+    log("Save failed: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
+async function saveAllIDEConfigs() {
+  if (!_currentSession || _currentSession.status !== "RUNNING") { log("Session must be running.", "warning"); return; }
+
+  var btn      = _el("btn-save-all-ide-configs");
+  var statusEl = _el("ide-config-status");
+  var origHTML = btn.innerHTML;
+
+  btn.disabled = true;
+  btn.textContent = "Saving all…";
+  if (statusEl) statusEl.textContent = "Saving all IDE settings…";
+  log("Saving all IDE settings…", "info");
+
+  try {
+    var result = await apiCall("/api/v1/vm/save_all_ide_configs", "POST");
+    var saved = [];
+    var results = result.results || {};
+    for (var ide in results) {
+      if (results[ide].saved) saved.push(ide);
+    }
+    if (saved.length) {
+      if (statusEl) statusEl.textContent = "Saved settings for: " + saved.join(", ") + ".";
+      log("Saved settings for: " + saved.join(", ") + ".", "success");
+    } else {
+      if (statusEl) statusEl.textContent = "No IDE settings found to save.";
+      log("No IDE settings found to save.", "warning");
+    }
+  } catch (err) {
+    if (statusEl) statusEl.textContent = "Failed: " + err.message;
+    log("Save all failed: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
+/* ── Log ── */
+
+function log(msg, type) {
+  var list = _el("log-list");
+  if (!list) return;
+  var entry = document.createElement("div");
+  entry.className = "log-entry log-" + (type || "info");
+  var time = new Date().toLocaleTimeString();
+  entry.innerHTML = '<span class="log-time">' + time + '</span><span class="log-msg">' + escapeHtml(msg) + '</span>';
   list.prepend(entry);
   while (list.children.length > 50) list.removeChild(list.lastChild);
 }
 
 function escapeHtml(str) {
-  const div = document.createElement("div");
+  var div = document.createElement("div");
   div.appendChild(document.createTextNode(str));
   return div.innerHTML;
-}
-
-function toggleFullscreen() {
-  const iframe = document.getElementById("novnc-iframe");
-  if (iframe?.requestFullscreen) iframe.requestFullscreen();
 }
