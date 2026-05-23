@@ -9,6 +9,9 @@ var _prevStatus        = null;
 var _selectedFiles     = [];
 var _projectsLoaded    = false;
 var _sessionStopFired  = false;
+var _provisionTimer    = null;
+var _provisionStart    = null;
+var PROVISION_DURATION  = 90;
 
 function initDashboard(supabaseUrl, supabaseAnonKey, backendApiUrl) {
   _supabase   = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
@@ -320,6 +323,50 @@ function stopHeartbeat() { clearInterval(_heartbeatInterval); _heartbeatInterval
 function startPolling()  { if (_pollInterval) return; _pollInterval = setInterval(fetchSessionStatus, 5000); }
 function stopPolling()   { clearInterval(_pollInterval); _pollInterval = null; }
 
+/* ── Provisioning Timer ── */
+
+function _startProvisionTimer() {
+  _provisionStart = Date.now();
+  var progressEl = document.getElementById("provision-progress");
+  if (progressEl) progressEl.style.display = "";
+  _updateProvisionTimer();
+  if (_provisionTimer) clearInterval(_provisionTimer);
+  _provisionTimer = setInterval(_updateProvisionTimer, 1000);
+}
+
+function _updateProvisionTimer() {
+  var elapsed = (Date.now() - _provisionStart) / 1000;
+  var remaining = Math.max(0, Math.ceil(PROVISION_DURATION - elapsed));
+  var pct = Math.min((elapsed / PROVISION_DURATION) * 100, 98);
+
+  var fillEl = document.getElementById("provision-fill");
+  var timerEl = document.getElementById("provision-timer");
+  if (fillEl) fillEl.style.width = pct + "%";
+  if (timerEl) {
+    if (remaining > 0) {
+      timerEl.textContent = "~" + remaining + "s remaining";
+    } else {
+      timerEl.textContent = "Almost ready…";
+    }
+  }
+}
+
+function _stopProvisionTimer(completed) {
+  if (_provisionTimer) { clearInterval(_provisionTimer); _provisionTimer = null; }
+  var progressEl = document.getElementById("provision-progress");
+  var fillEl = document.getElementById("provision-fill");
+  var timerEl = document.getElementById("provision-timer");
+  if (completed) {
+    if (fillEl) fillEl.style.width = "100%";
+    if (timerEl) timerEl.textContent = "Ready";
+    setTimeout(function() {
+      if (progressEl) progressEl.style.display = "none";
+    }, 1500);
+  } else {
+    if (progressEl) progressEl.style.display = "none";
+  }
+}
+
 /* ── Rendering ── */
 
 function _showWorkspacePanels(show) {
@@ -343,6 +390,7 @@ function renderNoSession() {
   _el("btn-stop").style.display = "none";
   _el("btn-allocate").style.display = "";
   setSessionState("idle");
+  _stopProvisionTimer(false);
   _showWorkspacePanels(false);
   _updateTransferButtons(false);
 }
@@ -364,6 +412,7 @@ function renderSession(session) {
     card.className = "card card-session is-running";
     document.getElementById("status-text").textContent = "Running";
     setSessionState("running");
+    _stopProvisionTimer(true);
     if (session.novnc_url) {
       _el("btn-connect").href = session.novnc_url;
       _el("btn-connect").style.display = "";
@@ -373,12 +422,14 @@ function renderSession(session) {
     card.className = "card card-session is-pending";
     document.getElementById("status-text").textContent = session.status;
     setSessionState("allocating");
+    if (!_provisionTimer) _startProvisionTimer();
     _el("btn-connect").style.display = "none";
     _showWorkspacePanels(false);
   } else {
     card.className = "card card-session";
     document.getElementById("status-text").textContent = session.status || "Stopped";
     setSessionState("idle");
+    _stopProvisionTimer(false);
     _el("btn-connect").style.display = "none";
     _showWorkspacePanels(false);
   }

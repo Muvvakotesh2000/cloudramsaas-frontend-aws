@@ -63,6 +63,16 @@
           <button class="btn btn-ghost-danger" id="btn-stop" onclick="stopSession()" style="display:none">Stop codespace</button>
         </div>
       </div>
+      <!-- Provisioning progress (shown during provisioning) -->
+      <div class="provision-progress" id="provision-progress" style="display:none">
+        <div class="provision-progress-header">
+          <span class="provision-label">Provisioning your cloud desktop…</span>
+          <span class="provision-timer" id="provision-timer">~90s remaining</span>
+        </div>
+        <div class="provision-track">
+          <div class="provision-fill" id="provision-fill"></div>
+        </div>
+      </div>
       <!-- Getting started hint (shown when no session) -->
       <div class="session-hint" id="session-hint">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
