@@ -196,9 +196,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="{{ url_for('static', filename='script.js') }}"></script>
   <script>
-    const SUPABASE_URL      = "{{ supabase_url }}";
-    const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
-    const BACKEND_API_URL   = "{{ backend_api_url }}";
+    const SUPABASE_URL      = {{ supabase_url | tojson }};
+    const SUPABASE_ANON_KEY = {{ supabase_anon_key | tojson }};
+    const BACKEND_API_URL   = {{ backend_api_url | tojson }};
     initDashboard(SUPABASE_URL, SUPABASE_ANON_KEY, BACKEND_API_URL);
   </script>
 </body>
