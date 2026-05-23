@@ -175,35 +175,21 @@ function _stopSessionBeacon() {
   _sessionStopFired = true;
   var token = null;
   try {
-    var storageKey = Object.keys(localStorage).find(function(k) { return k.indexOf("supabase") !== -1 && k.indexOf("auth") !== -1; });
-    if (storageKey) {
-      var data = JSON.parse(localStorage.getItem(storageKey));
-      token = data && data.access_token;
+    var keys = Object.keys(localStorage);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf("sb-") === 0 && keys[i].indexOf("-auth-token") !== -1) {
+        var raw = JSON.parse(localStorage.getItem(keys[i]));
+        token = raw && raw.access_token;
+        break;
+      }
     }
   } catch (_) {}
 
   if (!token) return;
 
-  var url = _backendUrl + "/api/v1/sessions";
-  if (navigator.sendBeacon) {
-    var blob = new Blob([""], { type: "application/json" });
-    var headers = new Headers({ "Authorization": "Bearer " + token });
-    // sendBeacon doesn't support custom headers, use fetch with keepalive
-    try {
-      fetch(url, {
-        method: "DELETE",
-        headers: { "Authorization": "Bearer " + token },
-        keepalive: true,
-      });
-    } catch (_) {}
-  } else {
-    try {
-      var xhr = new XMLHttpRequest();
-      xhr.open("DELETE", url, false);
-      xhr.setRequestHeader("Authorization", "Bearer " + token);
-      xhr.send();
-    } catch (_) {}
-  }
+  var url = _backendUrl + "/api/v1/sessions/beacon-stop";
+  var blob = new Blob([token], { type: "text/plain" });
+  navigator.sendBeacon(url, blob);
 }
 
 async function handleSignOut() {
