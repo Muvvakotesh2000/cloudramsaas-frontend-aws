@@ -314,7 +314,7 @@ function _notifyReady() {
   } else if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission();
   }
-  try { document.title = "✓ CloudRAMSaaS — Ready"; setTimeout(function() { document.title = "CloudRAMSaaS"; }, 5000); } catch(_) {}
+  try { document.title = "✓ CloudRAMSaaS - Ready"; setTimeout(function() { document.title = "CloudRAMSaaS"; }, 5000); } catch(_) {}
 
   _startProjectPolling();
 }
@@ -440,7 +440,7 @@ function renderSession(session) {
   var card = document.getElementById("session-card");
 
   document.getElementById("info-session-id").textContent =
-    session.session_id ? session.session_id.slice(0, 8) + "…" : "—";
+    session.session_id ? session.session_id.slice(0, 8) + "…" : "-";
 
   var ip = session.private_ip;
   document.getElementById("info-ip").textContent = ip || "";
@@ -494,12 +494,13 @@ function setSessionState(state) {
     }
     alloc.style.display = "";
     stop.style.display = "none";
-    if (hint && !open) {
-      hint.innerHTML = ‘<svg width=”16” height=”16” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2” stroke-linecap=”round” stroke-linejoin=”round”><circle cx=”12” cy=”12” r=”10”/><line x1=”12” y1=”16” x2=”12” y2=”12”/><line x1=”12” y1=”8” x2=”12.01” y2=”8”/></svg>’
-        + ‘<span>Cloud desktops are available <strong>Mon-Fri, 6 AM - 5 PM PT</strong>. Next window: <strong>’ + _formatNextWindow() + ‘</strong>.</span>’;
-    } else if (hint && open) {
-      hint.innerHTML = ‘<svg width=”16” height=”16” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2” stroke-linecap=”round” stroke-linejoin=”round”><circle cx=”12” cy=”12” r=”10”/><line x1=”12” y1=”16” x2=”12” y2=”12”/><line x1=”12” y1=”8” x2=”12.01” y2=”8”/></svg>’
-        + ‘<span>Click <strong>New codespace</strong> to launch your cloud desktop. Upload projects, open your IDE in the browser, and download your work.</span>’;
+    if (hint) {
+      var hintSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+      if (!open) {
+        hint.innerHTML = hintSvg + '<span>Cloud desktops are available <strong>Mon-Fri, 6 AM - 5 PM PT</strong>. Next window: <strong>' + _formatNextWindow() + '</strong>.</span>';
+      } else {
+        hint.innerHTML = hintSvg + '<span>Click <strong>New codespace</strong> to launch your cloud desktop. Upload projects, open your IDE in the browser, and download your work.</span>';
+      }
     }
   } else if (state === "allocating") {
     alloc.disabled = true;
