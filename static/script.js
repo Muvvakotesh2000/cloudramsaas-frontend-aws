@@ -15,23 +15,27 @@ var _projectPollTimer  = null;
 var _projectPollCount  = 0;
 var PROVISION_DURATION  = 90;
 
+function _getPacificTime() {
+  var parts = {};
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    weekday: "short", hour: "numeric", hour12: false
+  }).formatToParts(new Date()).forEach(function(p) { parts[p.type] = p.value; });
+  var dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return { day: dayMap[parts.weekday], hour: parseInt(parts.hour, 10) };
+}
+
 function _isWithinWorkingHours() {
-  var now = new Date();
-  var pacific = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
-  var day = pacific.getDay();
-  var hour = pacific.getHours();
-  return day >= 1 && day <= 5 && hour >= 6 && hour < 17;
+  var pt = _getPacificTime();
+  return pt.day >= 1 && pt.day <= 5 && pt.hour >= 6 && pt.hour < 17;
 }
 
 function _formatNextWindow() {
-  var now = new Date();
-  var pacific = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
-  var day = pacific.getDay();
-  var hour = pacific.getHours();
-  if (day >= 1 && day <= 5 && hour < 6) return "today at 6:00 AM PT";
-  if (day === 0 || (day === 6 && hour >= 17) || day === 6) return "Monday at 6:00 AM PT";
-  if (day >= 1 && day <= 4 && hour >= 17) return "tomorrow at 6:00 AM PT";
-  if (day === 5 && hour >= 17) return "Monday at 6:00 AM PT";
+  var pt = _getPacificTime();
+  if (pt.day >= 1 && pt.day <= 5 && pt.hour < 6) return "today at 6:00 AM PT";
+  if (pt.day === 0 || pt.day === 6) return "Monday at 6:00 AM PT";
+  if (pt.day >= 1 && pt.day <= 4 && pt.hour >= 17) return "tomorrow at 6:00 AM PT";
+  if (pt.day === 5 && pt.hour >= 17) return "Monday at 6:00 AM PT";
   return "next business day at 6:00 AM PT";
 }
 
