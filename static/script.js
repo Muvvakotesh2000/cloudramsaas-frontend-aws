@@ -16,18 +16,29 @@ var _projectPollCount  = 0;
 var PROVISION_DURATION  = 90;
 
 function _getPacificTime() {
-  var parts = {};
-  new Intl.DateTimeFormat("en-US", {
+  var str = new Date().toLocaleString("en-US", {
     timeZone: "America/Los_Angeles",
-    weekday: "short", hour: "numeric", hour12: false
-  }).formatToParts(new Date()).forEach(function(p) { parts[p.type] = p.value; });
+    weekday: "short",
+    hour: "numeric",
+    hour12: false
+  });
+  var dayStr = str.split(" ")[0].replace(",", "");
+  var hourStr = str.split(" ")[1];
   var dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return { day: dayMap[parts.weekday], hour: parseInt(parts.hour, 10) };
+  var day = dayMap[dayStr];
+  var hour = parseInt(hourStr, 10);
+  if (hour === 24) hour = 0;
+  if (typeof day === "undefined") day = new Date().getDay();
+  return { day: day, hour: hour };
 }
 
 function _isWithinWorkingHours() {
-  var pt = _getPacificTime();
-  return pt.day >= 1 && pt.day <= 5 && pt.hour >= 6 && pt.hour < 17;
+  try {
+    var pt = _getPacificTime();
+    return pt.day >= 1 && pt.day <= 5 && pt.hour >= 6 && pt.hour < 17;
+  } catch (e) {
+    return true;
+  }
 }
 
 function _formatNextWindow() {
@@ -471,6 +482,7 @@ function setSessionState(state) {
   var alloc = _el("btn-allocate");
   var stop  = _el("btn-stop");
   var hint  = _el("session-hint");
+  if (!alloc || !stop) return;
 
   if (state === "idle") {
     var open = _isWithinWorkingHours();
@@ -483,11 +495,11 @@ function setSessionState(state) {
     alloc.style.display = "";
     stop.style.display = "none";
     if (hint && !open) {
-      hint.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
-        + '<span>Cloud desktops are available <strong>Mon–Fri, 6 AM – 5 PM PT</strong>. Next window: <strong>' + _formatNextWindow() + '</strong>.</span>';
+      hint.innerHTML = ‘<svg width=”16” height=”16” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2” stroke-linecap=”round” stroke-linejoin=”round”><circle cx=”12” cy=”12” r=”10”/><line x1=”12” y1=”16” x2=”12” y2=”12”/><line x1=”12” y1=”8” x2=”12.01” y2=”8”/></svg>’
+        + ‘<span>Cloud desktops are available <strong>Mon-Fri, 6 AM - 5 PM PT</strong>. Next window: <strong>’ + _formatNextWindow() + ‘</strong>.</span>’;
     } else if (hint && open) {
-      hint.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
-        + ‘<span>Click <strong>”New codespace”</strong> to launch your cloud desktop. Once it’s running, you can upload projects, open your IDE in the browser, and download your work.</span>’;
+      hint.innerHTML = ‘<svg width=”16” height=”16” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2” stroke-linecap=”round” stroke-linejoin=”round”><circle cx=”12” cy=”12” r=”10”/><line x1=”12” y1=”16” x2=”12” y2=”12”/><line x1=”12” y1=”8” x2=”12.01” y2=”8”/></svg>’
+        + ‘<span>Click <strong>New codespace</strong> to launch your cloud desktop. Upload projects, open your IDE in the browser, and download your work.</span>’;
     }
   } else if (state === "allocating") {
     alloc.disabled = true;
