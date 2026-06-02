@@ -6,7 +6,7 @@
   <title>CloudRAMSaaS — Cloud Desktop</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body class="auth-page">
@@ -15,15 +15,12 @@
     <div class="auth-card">
       <div class="brand">
         <div class="brand-icon">
-          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="40" height="40" rx="10" fill="url(#grad)"/>
-            <path d="M10 22C10 17.58 13.58 14 18 14h1.5a6.5 6.5 0 016.5 6.5v.5H28a4 4 0 010 8H12a4 4 0 01-2-7.46" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-            <defs>
-              <linearGradient id="grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#6366f1"/>
-                <stop offset="1" stop-color="#8b5cf6"/>
-              </linearGradient>
-            </defs>
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="48" height="48" rx="12" fill="#e8501a"/>
+            <rect x="10" y="10" width="11" height="11" rx="2.5" fill="white" fill-opacity="0.9"/>
+            <rect x="27" y="10" width="11" height="11" rx="2.5" fill="white" fill-opacity="0.5"/>
+            <rect x="10" y="27" width="11" height="11" rx="2.5" fill="white" fill-opacity="0.5"/>
+            <rect x="27" y="27" width="11" height="11" rx="2.5" fill="white" fill-opacity="0.9"/>
           </svg>
         </div>
         <h1>CloudRAMSaaS</h1>
