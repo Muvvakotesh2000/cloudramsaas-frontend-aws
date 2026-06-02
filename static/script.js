@@ -15,6 +15,26 @@ var _projectPollTimer  = null;
 var _projectPollCount  = 0;
 var PROVISION_DURATION  = 90;
 
+function _isWithinWorkingHours() {
+  var now = new Date();
+  var pacific = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+  var day = pacific.getDay();
+  var hour = pacific.getHours();
+  return day >= 1 && day <= 5 && hour >= 6 && hour < 17;
+}
+
+function _formatNextWindow() {
+  var now = new Date();
+  var pacific = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+  var day = pacific.getDay();
+  var hour = pacific.getHours();
+  if (day >= 1 && day <= 5 && hour < 6) return "today at 6:00 AM PT";
+  if (day === 0 || (day === 6 && hour >= 17) || day === 6) return "Monday at 6:00 AM PT";
+  if (day >= 1 && day <= 4 && hour >= 17) return "tomorrow at 6:00 AM PT";
+  if (day === 5 && hour >= 17) return "Monday at 6:00 AM PT";
+  return "next business day at 6:00 AM PT";
+}
+
 function initDashboard(supabaseUrl, supabaseAnonKey, backendApiUrl) {
   _supabase   = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
   _backendUrl = backendApiUrl;
@@ -446,12 +466,25 @@ function renderSession(session) {
 function setSessionState(state) {
   var alloc = _el("btn-allocate");
   var stop  = _el("btn-stop");
+  var hint  = _el("session-hint");
 
   if (state === "idle") {
-    alloc.disabled = false;
-    alloc.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg> New codespace';
+    var open = _isWithinWorkingHours();
+    alloc.disabled = !open;
+    if (open) {
+      alloc.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg> New codespace';
+    } else {
+      alloc.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg> Unavailable';
+    }
     alloc.style.display = "";
     stop.style.display = "none";
+    if (hint && !open) {
+      hint.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+        + '<span>Cloud desktops are available <strong>Mon–Fri, 6 AM – 5 PM PT</strong>. Next window: <strong>' + _formatNextWindow() + '</strong>.</span>';
+    } else if (hint && open) {
+      hint.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+        + ‘<span>Click <strong>”New codespace”</strong> to launch your cloud desktop. Once it’s running, you can upload projects, open your IDE in the browser, and download your work.</span>’;
+    }
   } else if (state === "allocating") {
     alloc.disabled = true;
     alloc.innerHTML = '<span class="spinner-inline"></span> Provisioning…';
